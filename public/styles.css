@@ -1,0 +1,39 @@
+body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 16px; background: #000; color: #fff; }
+a { color: #8ab4f8; }
+.status { padding: 8px 12px; border-left: 6px solid; }
+#safety { white-space: pre-line; } /* "\n" in the message starts a new line */
+#recent { display: flex; justify-content: space-between; gap: 16px; list-style: none; padding: 0; white-space: nowrap; }
+#forecast, #sunny { width: 100%; table-layout: fixed; border-collapse: collapse; }
+#forecast th, #forecast td, #sunny th, #sunny td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #333; }
+#forecast tbody tr:last-child > *, #sunny tbody tr:last-child > * { border-bottom: none; }
+.red { background: #3d0f0f; border-color: #ef5350; }
+.orange { background: #3d2208; border-color: #ff9800; }
+.yellow { background: #3a3008; border-color: #fdd835; }
+.green { background: #0f2e14; border-color: #66bb6a; }
+footer { margin-top: 1.25rem; font-size: 0.875rem; color: #bbb; }
+.footer-links { margin-top: 1.25rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.donate { padding: 8px 20px; border: 1px solid #fff; border-radius: 999px; color: #fff; text-decoration: none; font-weight: 600; }
+.donate:hover, .donate:focus-visible { background: #fff; color: #000; }
+/* On narrow screens keep tables and the chart readable and let them scroll sideways instead of squishing. */
+.scroll-x {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* Scroll hint: a soft glow at whichever edge has more content. The black "local" covers scroll with the
+     content and hide the glow once that edge is reached. Works everywhere, including iOS. */
+  background:
+    linear-gradient(to right, #000 30%, transparent) left / 40px 100% no-repeat local,
+    linear-gradient(to left, #000 30%, transparent) right / 40px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(255, 255, 255, 0.3), transparent) left / 14px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(255, 255, 255, 0.3), transparent) right / 14px 100% no-repeat scroll;
+}
+/* Always-visible scrollbar (Chrome, Edge, desktop Safari; iOS Safari ignores this). */
+.scroll-x::-webkit-scrollbar { height: 8px; }
+.scroll-x::-webkit-scrollbar-track { background: #1a1a1a; border-radius: 4px; }
+.scroll-x::-webkit-scrollbar-thumb { background: #666; border-radius: 4px; }
+/* Firefox only: Chrome ignores the ::-webkit-scrollbar rules above if scrollbar-color is set. */
+@supports not selector(::-webkit-scrollbar) {
+  .scroll-x { scrollbar-color: #666 #1a1a1a; }
+}
+.chart-box { position: relative; min-width: 600px; } /* Chart.js sizes the canvas to this box */
+#forecast { min-width: 600px; }
+#sunny { min-width: 480px; }

@@ -5,46 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Is the Creek Wet?</title>
   <link rel="icon" type="image/png" href="/favicon.png">
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 16px; background: #000; color: #fff; }
-    a { color: #8ab4f8; }
-    .status { padding: 8px 12px; border-left: 6px solid; }
-    #safety { white-space: pre-line; } /* "\n" in the message starts a new line */
-    #recent { display: flex; justify-content: space-between; list-style: none; padding: 0; }
-    #forecast, #sunny { width: 100%; table-layout: fixed; border-collapse: collapse; }
-    #forecast th, #forecast td, #sunny th, #sunny td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #333; }
-    #forecast tbody tr:last-child > *, #sunny tbody tr:last-child > * { border-bottom: none; }
-    .red { background: #3d0f0f; border-color: #ef5350; }
-    .orange { background: #3d2208; border-color: #ff9800; }
-    .yellow { background: #3a3008; border-color: #fdd835; }
-    .green { background: #0f2e14; border-color: #66bb6a; }
-    footer { margin-top: 1.25rem; font-size: 0.875rem; color: #bbb; }
-    .footer-links { margin-top: 1.25rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
-    .donate { padding: 8px 20px; border: 1px solid #fff; border-radius: 999px; color: #fff; text-decoration: none; font-weight: 600; }
-    .donate:hover, .donate:focus-visible { background: #fff; color: #000; }
-  </style>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <h1>Is the Creek Wet?</h1>
 
   <p id="safety">Loading…</p>
 
-  <h2>Last rain</h2>
-  <p id="last-rain"></p>
+  <div class="scroll-x">
+    <ul id="recent"><li><strong>Last rain:</strong> <span id="last-rain"></span></li></ul>
+  </div>
 
-  <ul id="recent"></ul>
-
-  <canvas id="chart"></canvas>
+  <div class="scroll-x">
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+  </div>
 
   <h2>NOAA Forecast</h2>
+  <div class="scroll-x">
   <table id="forecast">
     <thead>
       <tr><th>Day</th><th>Conditions</th><th>High / Low</th><th>Precipitation %</th><th>Expected Precip</th></tr>
     </thead>
     <tbody id="forecast-rows"><tr><td colspan="5">Loading…</td></tr></tbody>
   </table>
+  </div>
 
   <h2>Sunny Crag Options</h2>
+  <div class="scroll-x">
   <table id="sunny">
     <thead>
       <tr><th>Crag</th><th>Sun / Aspect</th></tr>
@@ -64,6 +51,7 @@
       <tr><td><a href="https://www.mountainproject.com/area/105716952/pistol-whipped">Pistol Whipped</a></td><td>West facing, good sun later in the day</td></tr>
     </tbody>
   </table>
+  </div>
 
   <footer>
     <p>
@@ -116,100 +104,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script>
-    // The API's "YYYY-MM-DD HH:MM:SS" is already Utah (Mountain) local time, so format
-    // its parts as-is rather than letting the browser shift it to the viewer's zone.
-    function formatMountain(dateTime) {
-      const [y, mo, d, h, mi] = dateTime.split(/[- :]/).map(Number);
-      const month = new Date(Date.UTC(y, mo - 1, 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
-      const hour12 = h % 12 || 12;
-      return `${month} ${d}, ${hour12}:${String(mi).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
-    }
-
-    // Previews and `wrangler dev` send the Worker's debug log back in X-Debug-Log (see src/lib.rs).
-    function logDebug(r) {
-      const log = r.headers.get("X-Debug-Log");
-      if (log) JSON.parse(log).forEach((entry) => console.debug(new URL(r.url).pathname, entry));
-      return r;
-    }
-
-    fetch("/api/rainfall")
-      .then(logDebug)
-      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then((data) => {
-        Chart.defaults.color = "#fff"; // axis labels and legend
-        Chart.defaults.borderColor = "#333"; // grid lines
-        new Chart(document.getElementById("chart"), {
-          type: "bar",
-          data: {
-            // Array labels render on two lines: weekday above, M/D below.
-            labels: data.days.map((d) => [d.weekday, d.date.slice(5).split("-").map(Number).join("/")]),
-            datasets: [{ label: "Rainfall (in)", data: data.days.map((d) => d.precip_in) }],
-          },
-          options: { scales: { y: { beginAtZero: true } } },
-        });
-
-        document.getElementById("recent").innerHTML = data.recent
-          .map((r) => `<li>Last ${r.hours} hours: ${r.precip_in == null ? "no data" : r.precip_in.toFixed(2) + " in"}</li>`)
-          .join("");
-
-        const last = data.last_rain;
-        let lastText = "None in the last 2 weeks";
-        if (last) {
-          const days = Math.floor(last.hours_ago / 24);
-          const hours = last.hours_ago;
-          const ago = hours < 1 ? "Less than an hour ago"
-            : days ? `${days} day${days === 1 ? "" : "s"} ago`
-            : `${hours} hour${hours === 1 ? "" : "s"} ago`;
-          lastText = `${ago} (${formatMountain(last.date_time)})`;
-        }
-        // Safety guideline: rain < 24h ago is red, < 48h orange, < 72h yellow, anything older is green.
-        const h = last ? last.hours_ago : Infinity;
-        const level = h < 24 ? "red" : h < 48 ? "orange" : h < 72 ? "yellow" : "green";
-        const safetyText = {
-          red: "Likely not safe to climb.\nRain was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-          orange: "Likely unsafe to climb.\nRain was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-          yellow: "Potentially unsafe to climb.\nRain was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-          green: "Likely safe to climb.\nNo rain has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
-        }[level];
-
-        const lastEl = document.getElementById("last-rain");
-        lastEl.textContent = lastText;
-
-        const safetyEl = document.getElementById("safety");
-        // Bold the first sentence (the verdict); the rest keeps its "\n" line breaks.
-        const breakAt = safetyText.indexOf("\n");
-        const verdict = document.createElement("strong");
-        verdict.textContent = safetyText.slice(0, breakAt);
-        safetyEl.replaceChildren(verdict, safetyText.slice(breakAt));
-        safetyEl.className = `status ${level}`;
-      })
-      .catch((err) => {
-        document.getElementById("safety").textContent = `Unknown: rainfall data couldn't be loaded (${err.message}).`;
-      });
-
-    fetch("/api/forecast")
-      .then(logDebug)
-      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then((data) => {
-        const temp = (t) => (t == null ? "–" : `${t}°F`);
-        document.getElementById("forecast-rows").replaceChildren(...data.days.map((d) => {
-          const tr = document.createElement("tr");
-          const day = document.createElement("th");
-          day.scope = "row";
-          day.textContent = d.name;
-          const cells = [d.short, `${temp(d.high)} / ${temp(d.low)}`, `${d.precip_pct}%`, d.precip_in == null ? "–" : `${d.precip_in.toFixed(2)} in`].map((text) => {
-            const td = document.createElement("td");
-            td.textContent = text;
-            return td;
-          });
-          tr.replaceChildren(day, ...cells);
-          return tr;
-        }));
-      })
-      .catch((err) => {
-        document.getElementById("forecast-rows").innerHTML = `<tr><td colspan="5">Couldn't load the forecast (${err.message}).</td></tr>`;
-      });
-  </script>
+  <script src="/app.js"></script>
 </body>
 </html>

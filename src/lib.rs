@@ -328,9 +328,13 @@ fn respond(body: String, status: u16, content_type: &str) -> Result<Response> {
 /// `key` must be a URL; the cache is per Cloudflare data center.
 async fn cached(key: &str, debug: &DebugLog, build: impl Future<Output = Result<Value>>) -> Result<Response> {
     let cache = Cache::default();
+    let now = Date::now().as_millis() / 1000;
     if let Some(mut hit) = cache.get(key, false).await? {
-        debug.log(json!({"msg": "cache hit", "key": key}));
-        return respond(hit.text().await?, 200, "application/json");
+        // Entries without X-Stored-At (cached before it existed) count as fully aged.
+        let stored_at = hit.headers().get("X-Stored-At")?.and_then(|s| s.parse().ok()).unwrap_or(0);
+        let age = now.saturating_sub(stored_at).min(CACHE_SECONDS as u64);
+        debug.log(json!({"msg": "cache hit", "key": key, "age_seconds": age}));
+        return for_browser(hit.text().await?, CACHE_SECONDS as u64 - age);
     }
     debug.log(json!({"msg": "cache miss", "key": key}));
     let mut body = Vec::new();
@@ -338,8 +342,17 @@ async fn cached(key: &str, debug: &DebugLog, build: impl Future<Output = Result<
     let body = String::from_utf8(body).unwrap();
     let mut resp = respond(body.clone(), 200, "application/json")?;
     resp.headers_mut().set("Cache-Control", &format!("max-age={CACHE_SECONDS}"))?;
+    resp.headers_mut().set("X-Stored-At", &now.to_string())?;
     cache.put(key, resp).await?;
-    respond(body, 200, "application/json")
+    for_browser(body, CACHE_SECONDS as u64)
+}
+
+/// A JSON response the visitor's browser may reuse for `max_age` seconds: the time left before
+/// our cached copy expires, so browser copies never outlive it and the data is no staler.
+fn for_browser(body: String, max_age: u64) -> Result<Response> {
+    let mut resp = respond(body, 200, "application/json")?;
+    resp.headers_mut().set("Cache-Control", &format!("private, max-age={max_age}"))?;
+    Ok(resp)
 }
 
 // Static files in public/ (the landing page) are served by Cloudflare before
@@ -379,6 +392,9 @@ async fn route(req: Request, env: Env, debug: &DebugLog) -> Result<Response> {
     let mut key = req.url()?;
     key.set_query(None);
 
+    if req.method() != Method::Get {
+        return respond("Method not allowed".to_string(), 405, "text/plain;charset=UTF-8");
+    }
     if !from_our_page(&req, &key)? {
         return respond("Forbidden".to_string(), 403, "text/plain;charset=UTF-8");
     }

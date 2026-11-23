@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Is the Creek Wet?</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 16px; background: #000; color: #fff; }
+    a { color: #8ab4f8; }
+    .status { padding: 8px 12px; border-left: 6px solid; }
+    #safety { white-space: pre-line; } /* "\n" in the message starts a new line */
+    #recent { display: flex; justify-content: space-between; list-style: none; padding: 0; }
+    #forecast { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    #forecast th, #forecast td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #333; }
+    #forecast tbody tr:last-child > * { border-bottom: none; }
+    .red { background: #3d0f0f; border-color: #ef5350; }
+    .orange { background: #3d2208; border-color: #ff9800; }
+    .yellow { background: #3a3008; border-color: #fdd835; }
+    .green { background: #0f2e14; border-color: #66bb6a; }
+    footer { margin-top: 3rem; padding-top: 1rem; font-size: 0.875rem; color: #bbb; }
+    .donate { display: block; width: fit-content; margin: 0 auto; padding: 8px 20px; border: 1px solid #fff; border-radius: 999px; color: #fff; text-decoration: none; font-weight: 600; }
+    .donate:hover, .donate:focus-visible { background: #fff; color: #000; }
+  </style>
+</head>
+<body>
+  <h1>Is the Creek Wet?</h1>
+
+  <p id="safety">Loading…</p>
+
+  <h2>Last rain</h2>
+  <p id="last-rain"></p>
+
+  <ul id="recent"></ul>
+
+  <canvas id="chart"></canvas>
+
+  <h2>NOAA Forecast</h2>
+  <table id="forecast">
+    <thead>
+      <tr><th>Day</th><th>Conditions</th><th>High / Low</th><th>Precipitation %</th><th>Expected Precip</th></tr>
+    </thead>
+    <tbody id="forecast-rows"><tr><td colspan="5">Loading…</td></tr></tbody>
+  </table>
+
+  <footer>
+    <p>
+      <strong>Data source:</strong> Hourly rainfall from the Dugout Ranch weather station,
+      provided by the <a href="https://climate.usu.edu/mchd/dashboard/dashboard.php?network=AGWX&station=1349823&units=E&showgraph=0&">Utah Climate Center</a> at Utah State University.
+      Forecast from the <a href="https://forecast.weather.gov/MapClick.php?lat=38.104&lon=-109.595">National Weather Service</a> (NOAA).
+      Times are Mountain Time.
+    </p>
+    <p>
+      <strong>How data is retrieved:</strong> The station reports once an hour. To keep load on the
+      Utah Climate Center low, we fetch its data at most once an hour and serve that saved copy to
+      every visitor until it expires. Loading this page doesn't contact the Utah Climate Center
+      directly, and the numbers shown can be up to about an hour behind the station. The forecast is
+      saved and refreshed the same way, at most once an hour.
+    </p>
+    <p>
+      <strong>Visiting Indian Creek:</strong> The BLM asks climbers to wait at least 24–48 hours after rain
+      before climbing on sandstone, because wet rock erodes faster and can weaken anchors and holds.
+      Some crags are voluntary avoidance areas for nesting raptors from March through late summer.
+      Pack out human waste, stay on existing trails to protect the cryptobiotic soil, and respect
+      private land. See the
+      <a href="https://www.blm.gov/visit/indian-creek-bears-ears-national-monument">BLM's Indian Creek page</a>
+      for current raptor closures, camping, and fees.
+    </p>
+    <p>
+      <strong>Support climbing access:</strong> Donate to the
+      <a href="https://www.accessfund.org/join">Access Fund</a>, which protects climbing access across the
+      U.S., or the <a href="https://www.southernutahclimbers.org/">Southern Utah Climbers Alliance</a>,
+      which works with land managers on access, trails, and replacing aging bolts and anchors.
+    </p>
+    <p>
+      <strong>Hosting:</strong> This site runs on <a href="https://workers.cloudflare.com/">Cloudflare Workers</a>.
+      The backend is Python, running in WebAssembly in Cloudflare data centers around the world, so
+      there's no server to maintain. Station and forecast data are stored in Cloudflare's edge cache,
+      which is how the site checks the Utah Climate Center at most once an hour no matter how many
+      people visit.
+    </p>
+    <p>
+      <strong>Support this site:</strong> Running this site and keeping the data fresh costs money.
+      If it's helped you plan a trip, small donations are greatly appreciated.
+    </p>
+    <p>
+      <strong>Contact:</strong> <a href="mailto:hello@isthecreekwet.com">hello@isthecreekwet.com</a>
+    </p>
+    <a class="donate" href="https://www.paypal.com/donate/?business=W4J6W4EFB57EY&amp;no_recurring=0&amp;currency_code=USD">Donate with PayPal</a>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script>
+    // The API's "YYYY-MM-DD HH:MM:SS" is already Utah (Mountain) local time, so format
+    // its parts as-is rather than letting the browser shift it to the viewer's zone.
+    function formatMountain(dateTime) {
+      const [y, mo, d, h, mi] = dateTime.split(/[- :]/).map(Number);
+      const month = new Date(Date.UTC(y, mo - 1, 1)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+      const suffix = d % 10 === 1 && d !== 11 ? "st" : d % 10 === 2 && d !== 12 ? "nd" : d % 10 === 3 && d !== 13 ? "rd" : "th";
+      const hour12 = h % 12 || 12;
+      return `${month} ${d}${suffix}, ${y} at ${hour12}:${String(mi).padStart(2, "0")} ${h < 12 ? "AM" : "PM"} Mountain Time`;
+    }
+
+    // Previews and `wrangler dev` send the Worker's debug log back in X-Debug-Log (see src/lib.rs).
+    function logDebug(r) {
+      const log = r.headers.get("X-Debug-Log");
+      if (log) JSON.parse(log).forEach((entry) => console.debug(new URL(r.url).pathname, entry));
+      return r;
+    }
+
+    fetch("/api/rainfall")
+      .then(logDebug)
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((data) => {
+        Chart.defaults.color = "#fff"; // axis labels and legend
+        Chart.defaults.borderColor = "#333"; // grid lines
+        new Chart(document.getElementById("chart"), {
+          type: "bar",
+          data: {
+            // Array labels render on two lines: weekday above, M/D below.
+            labels: data.days.map((d) => [d.weekday, d.date.slice(5).split("-").map(Number).join("/")]),
+            datasets: [{ label: "Rainfall (in)", data: data.days.map((d) => d.precip_in) }],
+          },
+          options: { scales: { y: { beginAtZero: true } } },
+        });
+
+        document.getElementById("recent").innerHTML = data.recent
+          .map((r) => `<li>Last ${r.hours} hours: ${r.precip_in == null ? "no data" : r.precip_in.toFixed(2) + " in"}</li>`)
+          .join("");
+
+        const last = data.last_rain;
+        let lastText = "No rain detected in more than 2 weeks.";
+        if (last) {
+          const days = Math.floor(last.hours_ago / 24);
+          const hours = last.hours_ago % 24;
+          const ago = last.hours_ago < 1 ? "within the last hour"
+            : (days ? `${days} day${days === 1 ? "" : "s"} ` : "") + `${hours} hour${hours === 1 ? "" : "s"} ago`;
+          lastText = `${ago} (${formatMountain(last.date_time)})`;
+        }
+        // Safety guideline: rain < 24h ago is red, < 48h orange, < 72h yellow, anything older is green.
+        const h = last ? last.hours_ago : Infinity;
+        const level = h < 24 ? "red" : h < 48 ? "orange" : h < 72 ? "yellow" : "green";
+        const safetyText = {
+          red: "Not safe to climb.\nRain was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+          orange: "Likely unsafe to climb.\nRain was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+          yellow: "Potentially unsafe to climb.\nRain was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+          green: "Likely safe to climb.\nNo rain has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
+        }[level];
+
+        const lastEl = document.getElementById("last-rain");
+        lastEl.textContent = lastText;
+        lastEl.className = `status ${level}`;
+
+        const safetyEl = document.getElementById("safety");
+        // Bold the first sentence (the verdict); the rest keeps its "\n" line breaks.
+        const breakAt = safetyText.indexOf("\n");
+        const verdict = document.createElement("strong");
+        verdict.textContent = safetyText.slice(0, breakAt);
+        safetyEl.replaceChildren(verdict, safetyText.slice(breakAt));
+        safetyEl.className = `status ${level}`;
+      })
+      .catch((err) => {
+        document.getElementById("safety").textContent = `Unknown: rainfall data couldn't be loaded (${err.message}).`;
+      });
+
+    fetch("/api/forecast")
+      .then(logDebug)
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((data) => {
+        const temp = (t) => (t == null ? "–" : `${t}°F`);
+        document.getElementById("forecast-rows").replaceChildren(...data.days.map((d) => {
+          const tr = document.createElement("tr");
+          const day = document.createElement("th");
+          day.scope = "row";
+          day.textContent = d.name;
+          const cells = [d.short, `${temp(d.high)} / ${temp(d.low)}`, `${d.precip_pct}%`, d.precip_in == null ? "–" : `${d.precip_in.toFixed(2)} in`].map((text) => {
+            const td = document.createElement("td");
+            td.textContent = text;
+            return td;
+          });
+          tr.replaceChildren(day, ...cells);
+          return tr;
+        }));
+      })
+      .catch((err) => {
+        document.getElementById("forecast-rows").innerHTML = `<tr><td colspan="5">Couldn't load the forecast (${err.message}).</td></tr>`;
+      });
+  </script>
+</body>
+</html>

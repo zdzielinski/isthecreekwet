@@ -1,0 +1,51 @@
+name = "isthecreekwet"
+main = "build/index.js"
+compatibility_date = "2026-11-01"
+
+[build]
+command = "cargo install -q \"worker-build@^0.9\" && worker-build --release"
+
+[[routes]]
+pattern = "isthecreekwet.com"
+custom_domain = true
+previews_enabled = true
+
+[assets]
+directory = "./public"
+
+[observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = false
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
+
+[observability.issues]
+enabled = true
+
+[previews.vars]
+LOG_LEVEL = "debug"
+
+[previews.observability]
+enabled = true
+head_sampling_rate = 1
+
+[previews.observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[previews.observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true

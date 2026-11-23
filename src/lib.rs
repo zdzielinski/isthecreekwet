@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
+use std::future::Future;
 use std::io;
 
 use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveDateTime, Utc};
@@ -44,8 +45,6 @@ impl DebugLog {
 /// Hourly rows for a station. Dates in and out are Utah local time.
 ///
 /// Date-only start/end values (YYYY-MM-DD) return every hour of those days.
-/// Successful responses are kept in Cloudflare's cache for CACHE_SECONDS so
-/// repeat visits don't call the climate API.
 async fn get_hourly(api_key: &str, start_date: &str, end_date: &str, debug: &DebugLog) -> Result<Vec<Value>> {
     let params = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("network", STATION_NETWORK)
@@ -54,26 +53,16 @@ async fn get_hourly(api_key: &str, start_date: &str, end_date: &str, debug: &Deb
         .append_pair("end_date", end_date)
         .append_pair("units", "e")
         .finish();
-    let url = format!("{API_BASE}/networks/ucc/hourlyData.php?{params}"); // also the cache key; no API key in it
-
-    let cache = Cache::default();
-    if let Some(mut cached) = cache.get(url.as_str(), false).await? {
-        debug.log(json!({"msg": "cache hit", "url": url}));
-        return Ok(payload(serde_json::from_str(&cached.text().await?)?));
-    }
-
+    let url = format!("{API_BASE}/networks/ucc/hourlyData.php?{params}"); // logged, so no API key in it
     let key = url::form_urlencoded::Serializer::new(String::new())
         .append_pair("key", api_key)
         .finish();
     let mut resp = Fetch::Url(format!("{url}&{key}").parse()?).send().await?;
-    debug.log(json!({"msg": "cache miss, fetched", "url": url, "status": resp.status_code()}));
-    let body = resp.text().await?;
-    let data: Value = serde_json::from_str(&body)?;
+    debug.log(json!({"msg": "fetched", "url": url, "status": resp.status_code()}));
+    let data: Value = resp.json().await?;
     if !truthy(data.get("success")) {
         return Err(Error::RustError(format!("USU API error for station {STATION_ID}: {data}")));
     }
-
-    cache_put(&url, body).await?;
     Ok(payload(data))
 }
 
@@ -96,40 +85,22 @@ fn truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// Store a JSON body in Cloudflare's cache under `key` (a URL) for CACHE_SECONDS.
-async fn cache_put(key: &str, body: String) -> Result<()> {
-    let headers = Headers::new();
-    headers.set("Content-Type", "application/json")?;
-    headers.set("Cache-Control", &format!("max-age={CACHE_SECONDS}"))?;
-    Cache::default()
-        .put(key, Response::ok(body)?.with_headers(headers))
-        .await
-}
-
-/// GET a National Weather Service API URL, cached like rainfall.
+/// GET a National Weather Service API URL.
 async fn nws_json(url: &str, debug: &DebugLog) -> Result<Value> {
-    let cache = Cache::default();
-    if let Some(mut cached) = cache.get(url, false).await? {
-        debug.log(json!({"msg": "cache hit", "url": url}));
-        return Ok(serde_json::from_str(&cached.text().await?)?);
-    }
     let headers = Headers::new();
     headers.set("User-Agent", NWS_USER_AGENT)?;
     headers.set("Accept", "application/geo+json")?;
     let mut init = RequestInit::new();
     init.with_headers(headers);
     let mut resp = Fetch::Request(Request::new_with_init(url, &init)?).send().await?;
-    debug.log(json!({"msg": "cache miss, fetched", "url": url, "status": resp.status_code()}));
+    debug.log(json!({"msg": "fetched", "url": url, "status": resp.status_code()}));
     if !(200..300).contains(&resp.status_code()) {
         return Err(Error::RustError(format!("NWS API error: {}", resp.status_code())));
     }
-    let body = resp.text().await?;
-    let data = serde_json::from_str(&body)?;
-    cache_put(url, body).await?;
-    Ok(data)
+    resp.json().await
 }
 
-/// The NWS 7-day forecast for the station, one entry per day. Cached like rainfall.
+/// The NWS 7-day forecast for the station, one entry per day.
 ///
 /// Returns [{"name", "date", "high", "low", "precip_pct", "precip_in", "short"}]; name is the
 /// weekday. high, low or precip_in is null when the forecast doesn't cover that part of the day.
@@ -292,25 +263,30 @@ async fn rainfall_rows(api_key: &str, debug: &DebugLog) -> Result<Vec<Value>> {
     get_hourly(api_key, &start, &end, debug).await
 }
 
-fn weekday(day: &str) -> String {
-    NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap().format("%a").to_string()
+/// The /api/rainfall body: daily totals, recent totals and the last rain.
+async fn get_rainfall(env: &Env, debug: &DebugLog) -> Result<Value> {
+    let rows = rainfall_rows(&env.secret("USU_API_KEY")?.to_string(), debug).await?;
+    let totals = daily_totals(&rows);
+    let days: HashSet<&str> = totals.iter().map(|(d, _, _)| d.as_str()).collect();
+    Ok(json!({
+        "station": STATION_NAME,
+        "units": "in",
+        "days": totals.iter().map(|(d, p, h)| json!({
+            "date": d,
+            "weekday": weekday(d),
+            "precip_in": p,
+            "hours": h,
+        })).collect::<Vec<_>>(),
+        "recent": recent_totals(&rows)?.into_iter().map(|(h, p)| json!({
+            "hours": h,
+            "precip_in": p,
+        })).collect::<Vec<_>>(),
+        "last_rain": last_rain(&rows, &days)?,
+    }))
 }
 
-fn render_text(totals: &[(String, f64, i64)], recent: &[(i64, Value)]) -> String {
-    let mut lines = vec![format!("Rainfall at {STATION_NAME} - last {} days", totals.len()), String::new()];
-    for (day, precip_in, hours) in totals {
-        let note = if *hours >= 24 { String::new() } else { format!("  ({hours}h reported so far)") };
-        lines.push(format!("{} {day}  {precip_in:.2} in{note}", weekday(day)));
-    }
-    let total: f64 = totals.iter().map(|(_, p, _)| p).sum();
-    lines.extend([String::new(), format!("Total: {total:.2} in"), String::new()]);
-    for (h, p) in recent {
-        lines.push(match p.as_f64() {
-            Some(p) => format!("Last {h}h: {p:.2} in"),
-            None => format!("Last {h}h: no data"),
-        });
-    }
-    lines.join("\n") + "\n"
+fn weekday(day: &str) -> String {
+    NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap().format("%a").to_string()
 }
 
 /// Serializes like Python's json.dumps defaults: ", " and ": " separators, non-ASCII escaped.
@@ -346,10 +322,24 @@ fn respond(body: String, status: u16, content_type: &str) -> Result<Response> {
     Ok(Response::ok(body)?.with_status(status).with_headers(headers))
 }
 
-fn json_response(data: Value) -> Result<Response> {
+/// Serve a JSON body from Cloudflare's cache, or build it, cache it for CACHE_SECONDS and serve it.
+///
+/// Each endpoint caches its finished body, so a cache hit makes no upstream API calls.
+/// `key` must be a URL; the cache is per Cloudflare data center.
+async fn cached(key: &str, debug: &DebugLog, build: impl Future<Output = Result<Value>>) -> Result<Response> {
+    let cache = Cache::default();
+    if let Some(mut hit) = cache.get(key, false).await? {
+        debug.log(json!({"msg": "cache hit", "key": key}));
+        return respond(hit.text().await?, 200, "application/json");
+    }
+    debug.log(json!({"msg": "cache miss", "key": key}));
     let mut body = Vec::new();
-    serde::Serialize::serialize(&data, &mut serde_json::Serializer::with_formatter(&mut body, PythonJson))?;
-    respond(String::from_utf8(body).unwrap(), 200, "application/json")
+    serde::Serialize::serialize(&build.await?, &mut serde_json::Serializer::with_formatter(&mut body, PythonJson))?;
+    let body = String::from_utf8(body).unwrap();
+    let mut resp = respond(body.clone(), 200, "application/json")?;
+    resp.headers_mut().set("Cache-Control", &format!("max-age={CACHE_SECONDS}"))?;
+    cache.put(key, resp).await?;
+    respond(body, 200, "application/json")
 }
 
 // Static files in public/ (the landing page) are served by Cloudflare before
@@ -374,37 +364,29 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     }
 }
 
+/// True when the request came from our own page. Browsers send Sec-Fetch-Site on every fetch;
+/// older ones without it still send a Referer. Both can be faked, so this only deters casual use.
+fn from_our_page(req: &Request, url: &Url) -> Result<bool> {
+    if let Some(site) = req.headers().get("Sec-Fetch-Site")? {
+        return Ok(site == "same-origin");
+    }
+    let referer = req.headers().get("Referer")?.and_then(|r| Url::parse(&r).ok());
+    Ok(referer.is_some_and(|r| r.origin() == url.origin()))
+}
+
 async fn route(req: Request, env: Env, debug: &DebugLog) -> Result<Response> {
-    let path = req.path();
+    // Cache by URL without the query string, so query strings can't bypass the cache.
+    let mut key = req.url()?;
+    key.set_query(None);
 
-    if path == "/api/rainfall" {
-        let rows = rainfall_rows(&env.secret("USU_API_KEY")?.to_string(), debug).await?;
-        let totals = daily_totals(&rows);
-        let days: HashSet<&str> = totals.iter().map(|(d, _, _)| d.as_str()).collect();
-        return json_response(json!({
-            "station": STATION_NAME,
-            "units": "in",
-            "days": totals.iter().map(|(d, p, h)| json!({
-                "date": d,
-                "weekday": weekday(d),
-                "precip_in": p,
-                "hours": h,
-            })).collect::<Vec<_>>(),
-            "recent": recent_totals(&rows)?.into_iter().map(|(h, p)| json!({
-                "hours": h,
-                "precip_in": p,
-            })).collect::<Vec<_>>(),
-            "last_rain": last_rain(&rows, &days)?,
-        }));
+    if !from_our_page(&req, &key)? {
+        return respond("Forbidden".to_string(), 403, "text/plain;charset=UTF-8");
     }
 
-    if path == "/api/rainfall.txt" {
-        let rows = rainfall_rows(&env.secret("USU_API_KEY")?.to_string(), debug).await?;
-        return respond(render_text(&daily_totals(&rows), &recent_totals(&rows)?), 200, "text/plain; charset=utf-8");
-    }
-
-    if path == "/api/forecast" {
-        return json_response(json!({"days": get_forecast(debug).await?}));
+    match req.path().as_str() {
+        "/api/rainfall" => return cached(key.as_str(), debug, get_rainfall(&env, debug)).await,
+        "/api/forecast" => return cached(key.as_str(), debug, async { Ok(json!({"days": get_forecast(debug).await?})) }).await,
+        _ => {}
     }
 
     respond("Not found".to_string(), 404, "text/plain;charset=UTF-8")

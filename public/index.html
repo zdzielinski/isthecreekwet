@@ -96,7 +96,7 @@
     </p>
     <p>
       <strong>Hosting:</strong> This site runs on <a href="https://workers.cloudflare.com/">Cloudflare Workers</a>.
-      The backend is Python, running in WebAssembly in Cloudflare data centers around the world, so
+      The backend is Rust, compiled to WebAssembly and running in WebAssembly in Cloudflare data centers around the world, so
       there's no server to maintain. Station and forecast data are stored in Cloudflare's edge cache,
       which is how the site checks the Utah Climate Center at most once an hour no matter how many
       people visit.

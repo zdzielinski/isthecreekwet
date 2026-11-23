@@ -4,21 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Is the Creek Wet?</title>
+  <link rel="icon" type="image/png" href="/favicon.png">
   <style>
     body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 16px; background: #000; color: #fff; }
     a { color: #8ab4f8; }
     .status { padding: 8px 12px; border-left: 6px solid; }
     #safety { white-space: pre-line; } /* "\n" in the message starts a new line */
     #recent { display: flex; justify-content: space-between; list-style: none; padding: 0; }
-    #forecast { width: 100%; table-layout: fixed; border-collapse: collapse; }
-    #forecast th, #forecast td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #333; }
-    #forecast tbody tr:last-child > * { border-bottom: none; }
+    #forecast, #sunny { width: 100%; table-layout: fixed; border-collapse: collapse; }
+    #forecast th, #forecast td, #sunny th, #sunny td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #333; }
+    #forecast tbody tr:last-child > *, #sunny tbody tr:last-child > * { border-bottom: none; }
     .red { background: #3d0f0f; border-color: #ef5350; }
     .orange { background: #3d2208; border-color: #ff9800; }
     .yellow { background: #3a3008; border-color: #fdd835; }
     .green { background: #0f2e14; border-color: #66bb6a; }
-    footer { margin-top: 3rem; padding-top: 1rem; font-size: 0.875rem; color: #bbb; }
-    .donate { display: block; width: fit-content; margin: 0 auto; padding: 8px 20px; border: 1px solid #fff; border-radius: 999px; color: #fff; text-decoration: none; font-weight: 600; }
+    footer { margin-top: 1.25rem; font-size: 0.875rem; color: #bbb; }
+    .footer-links { margin-top: 1.25rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+    .donate { padding: 8px 20px; border: 1px solid #fff; border-radius: 999px; color: #fff; text-decoration: none; font-weight: 600; }
     .donate:hover, .donate:focus-visible { background: #fff; color: #000; }
   </style>
 </head>
@@ -40,6 +42,27 @@
       <tr><th>Day</th><th>Conditions</th><th>High / Low</th><th>Precipitation %</th><th>Expected Precip</th></tr>
     </thead>
     <tbody id="forecast-rows"><tr><td colspan="5">Loading…</td></tr></tbody>
+  </table>
+
+  <h2>Sunny Crag Options</h2>
+  <table id="sunny">
+    <thead>
+      <tr><th>Crag</th><th>Sun / Aspect</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><a href="https://www.mountainproject.com/area/105716943/scarface">Scarface</a></td><td>Faces due south, sun all day</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/116838635/hurt-locker-area">Hurt Locker Area</a></td><td>South facing, sun all day</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/105716973/original-meat-wall">Original Meat Wall</a></td><td>South facing, good sun</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/105795277/technicolor-wall">Technicolor Wall</a></td><td>South and east facing, lots of sun</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/106720609/shock-and-awe">Shock and Awe</a></td><td>Sun most of the day</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/111064242/high-horse">High Horse</a></td><td>Sun almost all day</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/107766672/vitamin-d-wall">Vitamin D Wall</a></td><td>East, southeast and south, sun roughly 6am–3pm</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/105888731/sparks-wall">Sparks Wall</a></td><td>Southeast routes get sun from sunrise to nearly sunset in fall and winter</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/105716883/battle-of-the-bulge-buttress">Battle of the Bulge Buttress</a></td><td>West facing, sun roughly 9am–5pm</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/105717033/the-optimator">The Optimator</a></td><td>South-facing black wall, sun roughly 8am–1pm</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/107198222/the-gash">The Gash</a></td><td>Southeast, sun roughly 6am–3pm, sheltered from wind</td></tr>
+      <tr><td><a href="https://www.mountainproject.com/area/105716952/pistol-whipped">Pistol Whipped</a></td><td>West facing, good sun later in the day</td></tr>
+    </tbody>
   </table>
 
   <footer>
@@ -85,7 +108,11 @@
     <p>
       <strong>Contact:</strong> <a href="mailto:hello@isthecreekwet.com">hello@isthecreekwet.com</a>
     </p>
-    <a class="donate" href="https://www.paypal.com/donate/?business=W4J6W4EFB57EY&amp;no_recurring=0&amp;currency_code=USD">Donate with PayPal</a>
+    <div class="footer-links">
+      <a class="donate" href="https://github.com/zdzielinski/isthecreekwet">GitHub Repository</a>
+      <a class="donate" href="https://www.paypal.com/donate/?business=W4J6W4EFB57EY&amp;no_recurring=0&amp;currency_code=USD">Donate with PayPal</a>
+      <a class="donate" href="https://www.instagram.com/craigslist_mountain_guide/">My Instagram</a>
+    </div>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -94,10 +121,9 @@
     // its parts as-is rather than letting the browser shift it to the viewer's zone.
     function formatMountain(dateTime) {
       const [y, mo, d, h, mi] = dateTime.split(/[- :]/).map(Number);
-      const month = new Date(Date.UTC(y, mo - 1, 1)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
-      const suffix = d % 10 === 1 && d !== 11 ? "st" : d % 10 === 2 && d !== 12 ? "nd" : d % 10 === 3 && d !== 13 ? "rd" : "th";
+      const month = new Date(Date.UTC(y, mo - 1, 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
       const hour12 = h % 12 || 12;
-      return `${month} ${d}${suffix}, ${y} at ${hour12}:${String(mi).padStart(2, "0")} ${h < 12 ? "AM" : "PM"} Mountain Time`;
+      return `${month} ${d}, ${hour12}:${String(mi).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
     }
 
     // Previews and `wrangler dev` send the Worker's debug log back in X-Debug-Log (see src/lib.rs).
@@ -128,19 +154,20 @@
           .join("");
 
         const last = data.last_rain;
-        let lastText = "No rain detected in more than 2 weeks.";
+        let lastText = "None in the last 2 weeks";
         if (last) {
           const days = Math.floor(last.hours_ago / 24);
-          const hours = last.hours_ago % 24;
-          const ago = last.hours_ago < 1 ? "within the last hour"
-            : (days ? `${days} day${days === 1 ? "" : "s"} ` : "") + `${hours} hour${hours === 1 ? "" : "s"} ago`;
+          const hours = last.hours_ago;
+          const ago = hours < 1 ? "Less than an hour ago"
+            : days ? `${days} day${days === 1 ? "" : "s"} ago`
+            : `${hours} hour${hours === 1 ? "" : "s"} ago`;
           lastText = `${ago} (${formatMountain(last.date_time)})`;
         }
         // Safety guideline: rain < 24h ago is red, < 48h orange, < 72h yellow, anything older is green.
         const h = last ? last.hours_ago : Infinity;
         const level = h < 24 ? "red" : h < 48 ? "orange" : h < 72 ? "yellow" : "green";
         const safetyText = {
-          red: "Not safe to climb.\nRain was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+          red: "Likely not safe to climb.\nRain was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
           orange: "Likely unsafe to climb.\nRain was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
           yellow: "Potentially unsafe to climb.\nRain was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
           green: "Likely safe to climb.\nNo rain has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
@@ -148,7 +175,6 @@
 
         const lastEl = document.getElementById("last-rain");
         lastEl.textContent = lastText;
-        lastEl.className = `status ${level}`;
 
         const safetyEl = document.getElementById("safety");
         // Bold the first sentence (the verdict); the rest keeps its "\n" line breaks.

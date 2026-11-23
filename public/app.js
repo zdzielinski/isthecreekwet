@@ -30,9 +30,9 @@ fetch("/api/rainfall")
       options: { scales: { y: { beginAtZero: true } } },
     });
 
-    document.getElementById("recent").innerHTML = data.recent
-      .map((r) => `<li>Last ${r.hours} hours: ${r.precip_in == null ? "no data" : r.precip_in.toFixed(2) + " in"}</li>`)
-      .join("");
+    document.getElementById("recent").insertAdjacentHTML("beforeend", data.recent
+      .map((r) => `<li><strong>Last ${r.hours} hours:</strong> ${r.precip_in == null ? "no data" : r.precip_in.toFixed(2) + " in"}</li>`)
+      .join(""));
 
     const last = data.last_rain;
     let lastText = "None in the last 2 weeks";

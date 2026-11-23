@@ -12,15 +12,16 @@
 
   <p id="safety">Loading…</p>
 
-  <h2>Last rain</h2>
-  <p id="last-rain"></p>
+  <div class="scroll-x">
+    <ul id="recent"><li><strong>Last rain:</strong> <span id="last-rain"></span></li></ul>
+  </div>
 
-  <ul id="recent"></ul>
-
-  <canvas id="chart"></canvas>
+  <div class="scroll-x">
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+  </div>
 
   <h2>NOAA Forecast</h2>
-  <div class="table-scroll">
+  <div class="scroll-x">
   <table id="forecast">
     <thead>
       <tr><th>Day</th><th>Conditions</th><th>High / Low</th><th>Precipitation %</th><th>Expected Precip</th></tr>
@@ -30,7 +31,7 @@
   </div>
 
   <h2>Sunny Crag Options</h2>
-  <div class="table-scroll">
+  <div class="scroll-x">
   <table id="sunny">
     <thead>
       <tr><th>Crag</th><th>Sun / Aspect</th></tr>

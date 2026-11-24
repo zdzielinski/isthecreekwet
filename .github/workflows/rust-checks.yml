@@ -1,6 +1,6 @@
 # The checks from CLAUDE.md: formatting, clippy (for the wasm32 build that Cloudflare runs), tests,
 # docs and a dependency audit.
-name: Rust
+name: Rust Checks
 
 on:
   pull_request:
@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  checks:
+  rust-checks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

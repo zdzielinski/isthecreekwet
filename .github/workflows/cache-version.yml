@@ -1,6 +1,6 @@
 # Every release must increase CACHE_VERSION in wrangler.toml, so Cloudflare's cache doesn't keep
 # serving the previous release's API responses. Releases are pull requests into main.
-name: Cache version
+name: Cache Version
 
 on:
   pull_request:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  cache-version-increased:
+  cache-version:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

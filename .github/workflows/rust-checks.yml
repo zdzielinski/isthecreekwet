@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust-checks:
+  checks:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
@@ -57,3 +57,13 @@ jobs:
 
       - name: ${{ matrix.name }}
         run: ${{ matrix.run }}
+
+  # The one check for branch rules to require: it passes only when every check above passed, so
+  # checks can be added or renamed without changing the rules.
+  rust-checks:
+    if: always()
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: All Rust checks passed
+        run: test "${{ needs.checks.result }}" = success

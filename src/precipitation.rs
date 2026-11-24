@@ -125,30 +125,41 @@ fn daily_totals(rows: &[Value]) -> Result<Vec<(String, f64, f64, i64)>> {
 
 /// Rolling precip totals over the last N hours, ending at the newest reading.
 ///
-/// Returns [(hours, `precip_in`)], e.g. [(24, 0.1), (48, 0.3), (72, 0.3)]. Like Python's `sum()`,
-/// a window with no reported readings totals the integer 0.
-fn recent_totals(rows: &[Value]) -> Result<Vec<(i64, Value)>> {
+/// Returns [(hours, `precip_in`, `snow_in`)], e.g. [(24, 0.1, 0), (48, 0.3, 0.1), (72, 0.3, 0.1)],
+/// where `snow_in` is the part of `precip_in` that fell in hours averaging `SNOW_MAX_F` or colder.
+/// Like Python's `sum()`, a total with no readings to add is the integer 0.
+fn recent_totals(rows: &[Value]) -> Result<Vec<(i64, Value, Value)>> {
     let times = rows
         .iter()
-        .map(|r| Ok((parse_date_time(date_time(r))?, precip_tb(r)?)))
+        .map(|r| {
+            let is_snow = airt2_avg(r).is_some_and(|f| f <= SNOW_MAX_F);
+            Ok((parse_date_time(date_time(r))?, precip_tb(r)?, is_snow))
+        })
         .collect::<Result<Vec<_>>>()?;
-    let Some(latest) = times.iter().map(|(t, _)| *t).max() else {
-        return Ok(RECENT_HOURS.iter().map(|&h| (h, Value::Null)).collect());
+    let Some(latest) = times.iter().map(|(t, _, _)| *t).max() else {
+        return Ok(RECENT_HOURS
+            .iter()
+            .map(|&h| (h, Value::Null, Value::Null))
+            .collect());
+    };
+    let total = |amounts: &[f64]| {
+        if amounts.is_empty() {
+            json!(0)
+        } else {
+            json!(round2(amounts.iter().sum()))
+        }
     };
     Ok(RECENT_HOURS
         .iter()
         .map(|&h| {
-            let window: Vec<f64> = times
+            let window: Vec<(f64, bool)> = times
                 .iter()
-                .filter(|(t, _)| *t > latest - Duration::hours(h))
-                .filter_map(|(_, p)| *p)
+                .filter(|(t, _, _)| *t > latest - Duration::hours(h))
+                .filter_map(|&(_, p, is_snow)| Some((p?, is_snow)))
                 .collect();
-            let total = if window.is_empty() {
-                json!(0)
-            } else {
-                json!(round2(window.iter().sum()))
-            };
-            (h, total)
+            let precip: Vec<f64> = window.iter().map(|&(p, _)| p).collect();
+            let snow: Vec<f64> = window.iter().filter(|(_, s)| *s).map(|&(p, _)| p).collect();
+            (h, total(&precip), total(&snow))
         })
         .collect())
 }
@@ -210,9 +221,10 @@ pub async fn get_precipitation(env: &Env, debug: &DebugLog) -> Result<Value> {
         "station": STATION_NAME,
         "units": "in",
         "days": daily,
-        "recent": recent_totals(&rows)?.into_iter().map(|(h, p)| json!({
+        "recent": recent_totals(&rows)?.into_iter().map(|(h, p, s)| json!({
             "hours": h,
             "precip_in": p,
+            "snow_in": s,
         })).collect::<Vec<_>>(),
         "last_precipitation": last_precipitation(&rows, &days)?,
     }))
@@ -289,7 +301,11 @@ mod tests {
     fn test_recent_totals_empty_is_null() -> Result<()> {
         assert_eq!(
             recent_totals(&[])?,
-            vec![(24, Value::Null), (48, Value::Null), (72, Value::Null)]
+            vec![
+                (24, Value::Null, Value::Null),
+                (48, Value::Null, Value::Null),
+                (72, Value::Null, Value::Null)
+            ]
         );
         Ok(())
     }
@@ -297,13 +313,18 @@ mod tests {
     #[test]
     fn test_recent_totals_windows() -> Result<()> {
         let rows = [
-            row("2026-11-20 12:00:00", &json!(0.3), &json!(null)), // 48h before latest: outside 48h window
+            row("2026-11-20 12:00:00", &json!(0.3), &json!(30)), // 48h before latest: outside 48h window
             row("2026-11-21 13:00:00", &json!(0.2), &json!(null)), // 23h before latest
+            row("2026-11-22 11:00:00", &json!(0.1), &json!(32)), // snow
             row("2026-11-22 12:00:00", &json!(null), &json!(null)),
         ];
         assert_eq!(
             recent_totals(&rows)?,
-            vec![(24, json!(0.2)), (48, json!(0.2)), (72, json!(0.5))]
+            vec![
+                (24, json!(0.3), json!(0.1)),
+                (48, json!(0.3), json!(0.1)),
+                (72, json!(0.6), json!(0.4))
+            ]
         );
         Ok(())
     }
@@ -311,7 +332,7 @@ mod tests {
     #[test]
     fn test_recent_totals_no_readings_is_integer_zero() -> Result<()> {
         let rows = [row("2026-11-22 12:00:00", &json!(null), &json!(null))];
-        assert_eq!(recent_totals(&rows)?[0], (24, json!(0)));
+        assert_eq!(recent_totals(&rows)?[0], (24, json!(0), json!(0)));
         Ok(())
     }
 

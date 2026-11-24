@@ -3,7 +3,7 @@
 use std::future::Future;
 
 use serde_json::{json, Value};
-use worker::{Cache, Date, Headers, Response};
+use worker::{Cache, Headers, Response};
 
 use crate::error::Result;
 use crate::json::PythonJson;
@@ -32,19 +32,11 @@ pub async fn cached(
     build: impl Future<Output = Result<Value>>,
 ) -> Result<Response> {
     let cache = Cache::default();
-    let now = Date::now().as_millis() / 1000;
     if !use_cache {
         debug.log(json!({"msg": "cache disabled", "key": key}));
     } else if let Some(mut hit) = cache.get(key, false).await? {
-        // Entries without X-Stored-At (cached before it existed) count as fully aged.
-        let stored_at = hit
-            .headers()
-            .get("X-Stored-At")?
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let age = now.saturating_sub(stored_at).min(u64::from(CACHE_SECONDS));
-        debug.log(json!({"msg": "cache hit", "key": key, "age_seconds": age}));
-        return for_browser(hit.text().await?, u64::from(CACHE_SECONDS) - age);
+        debug.log(json!({"msg": "cache hit", "key": key}));
+        return for_browser(hit.text().await?);
     } else {
         debug.log(json!({"msg": "cache miss", "key": key}));
     }
@@ -54,24 +46,19 @@ pub async fn cached(
         &mut serde_json::Serializer::with_formatter(&mut body, PythonJson),
     )?;
     let body = String::from_utf8(body)?;
-    if !use_cache {
-        let mut resp = respond(body, 200, "application/json")?;
-        resp.headers_mut().set("Cache-Control", "no-store")?; // the browser mustn't keep it either
-        return Ok(resp);
+    if use_cache {
+        let mut resp = respond(body.clone(), 200, "application/json")?;
+        resp.headers_mut()
+            .set("Cache-Control", &format!("max-age={CACHE_SECONDS}"))?;
+        cache.put(key, resp).await?;
     }
-    let mut resp = respond(body.clone(), 200, "application/json")?;
-    resp.headers_mut()
-        .set("Cache-Control", &format!("max-age={CACHE_SECONDS}"))?;
-    resp.headers_mut().set("X-Stored-At", &now.to_string())?;
-    cache.put(key, resp).await?;
-    for_browser(body, u64::from(CACHE_SECONDS))
+    for_browser(body)
 }
 
-/// A JSON response the visitor's browser may reuse for `max_age` seconds: the time left before
-/// our cached copy expires, so browser copies never outlive it and the data is no staler.
-fn for_browser(body: String, max_age: u64) -> Result<Response> {
+/// A JSON response the visitor's browser mustn't store, so every page load gets the current data
+/// from our cache (or a fresh build).
+fn for_browser(body: String) -> Result<Response> {
     let mut resp = respond(body, 200, "application/json")?;
-    resp.headers_mut()
-        .set("Cache-Control", &format!("private, max-age={max_age}"))?;
+    resp.headers_mut().set("Cache-Control", "no-store")?;
     Ok(resp)
 }

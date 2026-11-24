@@ -7,7 +7,6 @@ a { color: #8ab4f8; }
 #forecast th, #forecast td, #sunny th, #sunny td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid #333; }
 #forecast tbody tr:last-child > *, #sunny tbody tr:last-child > * { border-bottom: none; }
 .red { background: #3d0f0f; border-color: #ef5350; }
-.orange { background: #3d2208; border-color: #ff9800; }
 .yellow { background: #3a3008; border-color: #fdd835; }
 .green { background: #0f2e14; border-color: #66bb6a; }
 footer { margin-top: 1.25rem; font-size: 0.875rem; color: #bbb; }

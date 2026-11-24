@@ -1,0 +1,35 @@
+# Every release must increase CACHE_VERSION in wrangler.toml, so Cloudflare's cache doesn't keep
+# serving the previous release's API responses. Releases are pull requests into main.
+name: Cache version
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  cache-version-increased:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check CACHE_VERSION was increased
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          version() { sed -n 's/^CACHE_VERSION = "\([0-9][0-9]*\)"$/\1/p'; }
+          pr=$(version < wrangler.toml)
+          base=$(git show "origin/$BASE_REF:wrangler.toml" | version)
+          echo "CACHE_VERSION on $BASE_REF: ${base:-none}, in this pull request: ${pr:-none}"
+          if [ -z "$pr" ]; then
+            echo "::error file=wrangler.toml::No CACHE_VERSION = \"<number>\" line found in wrangler.toml."
+            exit 1
+          fi
+          if [ -n "$base" ] && [ "$pr" -le "$base" ]; then
+            echo "::error file=wrangler.toml::Increase CACHE_VERSION in wrangler.toml above $base (it's $pr), so Cloudflare's cache doesn't serve the previous release's responses."
+            exit 1
+          fi

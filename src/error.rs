@@ -38,6 +38,10 @@ pub enum Error {
     #[error("NWS forecast has no periods")]
     NoForecastPeriods,
 
+    /// wrangler.toml has no `CACHE_VERSION = "<number>"` line to build cache keys from.
+    #[error("CACHE_VERSION not found in wrangler.toml")]
+    MissingCacheVersion,
+
     /// A numeric field from an upstream API held something else.
     #[error("{field} is not a number: {value}")]
     NotANumber { field: &'static str, value: String },

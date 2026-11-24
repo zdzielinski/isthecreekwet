@@ -32,6 +32,9 @@ persist = true
 [observability.issues]
 enabled = true
 
+[vars]
+CACHE_VERSION = "3"
+
 [previews.vars]
 LOG_LEVEL = "debug"
 

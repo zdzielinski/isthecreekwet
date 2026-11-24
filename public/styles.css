@@ -35,6 +35,6 @@ footer { margin-top: 1.25rem; font-size: 0.875rem; color: #bbb; }
   .scroll-x { scrollbar-color: #666 #1a1a1a; }
 }
 .chart-box { position: relative; min-width: 600px; } /* Chart.js sizes the canvas to this box */
-.chart-note { margin-top: 4px; font-size: 0.85rem; color: #aaa; }
+.chart-note { margin-top: 4px; font-size: 0.85rem; color: #aaa; text-align: center; }
 #forecast { min-width: 600px; }
 #sunny { min-width: 480px; }

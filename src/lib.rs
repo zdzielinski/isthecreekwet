@@ -1,4 +1,4 @@
-//! Is the creek wet? Recent rainfall from the Utah Climate Center API.
+//! Is the creek wet? Recent precipitation from the Utah Climate Center API.
 //!
 //! API docs: https://logansw.atlassian.net/wiki/spaces/UCCA/overview
 
@@ -15,6 +15,8 @@ const API_BASE: &str = "https://climate.usu.edu/api/v4";
 const CACHE_SECONDS: u32 = 3600; // the station reports hourly
 const DAYS: usize = 14;
 const RECENT_HOURS: [i64; 3] = [24, 48, 72];
+// Precip in an hour averaging this cold or colder (airt2_avg, °F) is charted as snow.
+const SNOW_MAX_F: f64 = 34.0;
 
 // Find station ids via /networks/ucc/stations/byNetwork.php?network=agwx
 const STATION_NAME: &str = "Dugout Ranch";
@@ -187,21 +189,33 @@ fn parse_date_time(s: &str) -> Result<NaiveDateTime> {
     NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").map_err(|e| Error::RustError(format!("{e}: {s}")))
 }
 
+/// An hourly row's airt2_avg (°F, the hour's average air temperature), or None if not reported.
+fn airt2_avg(row: &Value) -> Option<f64> {
+    match row.get("airt2_avg")? {
+        Value::String(s) => s.trim().parse().ok(),
+        v => v.as_f64(),
+    }
+}
+
 /// Sum hourly precip (precip_tb) by local date. Returns the newest DAYS days, oldest first.
 ///
-/// Each value is (precip_in, hours) where hours is how many hourly rows
-/// the station reported that day (today will be partial).
-fn daily_totals(rows: &[Value]) -> Vec<(String, f64, i64)> {
-    let mut totals: BTreeMap<String, (f64, i64)> = BTreeMap::new();
+/// Each value is (date, precip_in, snow_in, hours). snow_in is the part of precip_in that fell in
+/// hours averaging SNOW_MAX_F or colder (hours with no temperature count as rain), and hours is
+/// how many hourly rows the station reported that day (today will be partial).
+fn daily_totals(rows: &[Value]) -> Vec<(String, f64, f64, i64)> {
+    let mut totals: BTreeMap<String, (f64, f64, i64)> = BTreeMap::new();
     for row in rows {
-        let t = totals.entry(date_time(row)[..10].to_string()).or_insert((0.0, 0));
-        t.1 += 1;
+        let t = totals.entry(date_time(row)[..10].to_string()).or_insert((0.0, 0.0, 0));
+        t.2 += 1;
         if let Some(p) = precip_tb(row) {
             t.0 += p;
+            if airt2_avg(row).is_some_and(|f| f <= SNOW_MAX_F) {
+                t.1 += p;
+            }
         }
     }
     let skip = totals.len().saturating_sub(DAYS);
-    totals.into_iter().skip(skip).map(|(d, (p, h))| (d, round2(p), h)).collect()
+    totals.into_iter().skip(skip).map(|(d, (p, s, h))| (d, round2(p), round2(s), h)).collect()
 }
 
 /// Rolling precip totals over the last N hours, ending at the newest reading.
@@ -234,8 +248,8 @@ fn recent_totals(rows: &[Value]) -> Result<Vec<(i64, Value)>> {
 /// Most recent hour with precip > 0 within `days` (a set of YYYY-MM-DD dates).
 ///
 /// Returns {"date_time": str, "hours_ago": int} measured back from the newest
-/// reading, or null if there was no rain in that window.
-fn last_rain(rows: &[Value], days: &HashSet<&str>) -> Result<Value> {
+/// reading, or null if there was no precipitation in that window.
+fn last_precipitation(rows: &[Value], days: &HashSet<&str>) -> Result<Value> {
     if rows.is_empty() {
         return Ok(Value::Null);
     }
@@ -254,7 +268,7 @@ fn last_rain(rows: &[Value], days: &HashSet<&str>) -> Result<Value> {
 }
 
 /// Hourly rows covering the last DAYS local days (plus a bit extra, trimmed later).
-async fn rainfall_rows(api_key: &str, debug: &DebugLog) -> Result<Vec<Value>> {
+async fn precipitation_rows(api_key: &str, debug: &DebugLog) -> Result<Vec<Value>> {
     // Utah is UTC-6/-7, so UTC "tomorrow" always covers local today; the extra
     // leading day is trimmed by daily_totals.
     let now_utc = Utc::now().date_naive();
@@ -263,25 +277,26 @@ async fn rainfall_rows(api_key: &str, debug: &DebugLog) -> Result<Vec<Value>> {
     get_hourly(api_key, &start, &end, debug).await
 }
 
-/// The /api/rainfall body: daily totals, recent totals and the last rain.
-async fn get_rainfall(env: &Env, debug: &DebugLog) -> Result<Value> {
-    let rows = rainfall_rows(&env.secret("USU_API_KEY")?.to_string(), debug).await?;
+/// The /api/precipitation body: daily totals, recent totals and the last precipitation.
+async fn get_precipitation(env: &Env, debug: &DebugLog) -> Result<Value> {
+    let rows = precipitation_rows(&env.secret("USU_API_KEY")?.to_string(), debug).await?;
     let totals = daily_totals(&rows);
-    let days: HashSet<&str> = totals.iter().map(|(d, _, _)| d.as_str()).collect();
+    let days: HashSet<&str> = totals.iter().map(|(d, _, _, _)| d.as_str()).collect();
     Ok(json!({
         "station": STATION_NAME,
         "units": "in",
-        "days": totals.iter().map(|(d, p, h)| json!({
+        "days": totals.iter().map(|(d, p, s, h)| json!({
             "date": d,
             "weekday": weekday(d),
             "precip_in": p,
+            "snow_in": s,
             "hours": h,
         })).collect::<Vec<_>>(),
         "recent": recent_totals(&rows)?.into_iter().map(|(h, p)| json!({
             "hours": h,
             "precip_in": p,
         })).collect::<Vec<_>>(),
-        "last_rain": last_rain(&rows, &days)?,
+        "last_rain": last_precipitation(&rows, &days)?,
     }))
 }
 
@@ -325,21 +340,30 @@ fn respond(body: String, status: u16, content_type: &str) -> Result<Response> {
 /// Serve a JSON body from Cloudflare's cache, or build it, cache it for CACHE_SECONDS and serve it.
 ///
 /// Each endpoint caches its finished body, so a cache hit makes no upstream API calls.
-/// `key` must be a URL; the cache is per Cloudflare data center.
-async fn cached(key: &str, debug: &DebugLog, build: impl Future<Output = Result<Value>>) -> Result<Response> {
+/// `key` must be a URL; the cache is per Cloudflare data center. With `use_cache` false (local dev,
+/// see DISABLE_CACHE in .dev.vars.example) every request builds a fresh body that nothing stores.
+async fn cached(key: &str, use_cache: bool, debug: &DebugLog, build: impl Future<Output = Result<Value>>) -> Result<Response> {
     let cache = Cache::default();
     let now = Date::now().as_millis() / 1000;
-    if let Some(mut hit) = cache.get(key, false).await? {
+    if !use_cache {
+        debug.log(json!({"msg": "cache disabled", "key": key}));
+    } else if let Some(mut hit) = cache.get(key, false).await? {
         // Entries without X-Stored-At (cached before it existed) count as fully aged.
         let stored_at = hit.headers().get("X-Stored-At")?.and_then(|s| s.parse().ok()).unwrap_or(0);
         let age = now.saturating_sub(stored_at).min(CACHE_SECONDS as u64);
         debug.log(json!({"msg": "cache hit", "key": key, "age_seconds": age}));
         return for_browser(hit.text().await?, CACHE_SECONDS as u64 - age);
+    } else {
+        debug.log(json!({"msg": "cache miss", "key": key}));
     }
-    debug.log(json!({"msg": "cache miss", "key": key}));
     let mut body = Vec::new();
     serde::Serialize::serialize(&build.await?, &mut serde_json::Serializer::with_formatter(&mut body, PythonJson))?;
     let body = String::from_utf8(body).unwrap();
+    if !use_cache {
+        let mut resp = respond(body, 200, "application/json")?;
+        resp.headers_mut().set("Cache-Control", "no-store")?; // the browser mustn't keep it either
+        return Ok(resp);
+    }
     let mut resp = respond(body.clone(), 200, "application/json")?;
     resp.headers_mut().set("Cache-Control", &format!("max-age={CACHE_SECONDS}"))?;
     resp.headers_mut().set("X-Stored-At", &now.to_string())?;
@@ -399,9 +423,11 @@ async fn route(req: Request, env: Env, debug: &DebugLog) -> Result<Response> {
         return respond("Forbidden".to_string(), 403, "text/plain;charset=UTF-8");
     }
 
+    // Only .dev.vars sets DISABLE_CACHE, so staging and production always cache.
+    let use_cache = !env.var("DISABLE_CACHE").is_ok_and(|v| v.to_string() == "true");
     match req.path().as_str() {
-        "/api/rainfall" => return cached(key.as_str(), debug, get_rainfall(&env, debug)).await,
-        "/api/forecast" => return cached(key.as_str(), debug, async { Ok(json!({"days": get_forecast(debug).await?})) }).await,
+        "/api/precipitation" => return cached(key.as_str(), use_cache, debug, get_precipitation(&env, debug)).await,
+        "/api/forecast" => return cached(key.as_str(), use_cache, debug, async { Ok(json!({"days": get_forecast(debug).await?})) }).await,
         _ => {}
     }
 

@@ -1,3 +1,13 @@
+// Hours the rock likely needs to dry, by precipitation in the rolling last 24 hours (inches).
+// The first row whose limit the amount is under applies.
+const DRYING_HOURS = [
+  { underInches: 0.25, hours: 24 },
+  { underInches: 1, hours: 48 },
+  { underInches: Infinity, hours: 72 },
+];
+// Melting snow keeps wetting the rock, so add this when at least half of those 24 hours' precipitation was snow.
+const SNOW_EXTRA_HOURS = 24;
+
 // The API's "YYYY-MM-DD HH:MM:SS" is already Utah (Mountain) local time, so format
 // its parts as-is rather than letting the browser shift it to the viewer's zone.
 function formatMountain(dateTime) {
@@ -40,25 +50,41 @@ fetch("/api/precipitation")
       .map((r) => `<li><strong>Last ${r.hours} hours:</strong> ${r.precip_in == null ? "no data" : r.precip_in.toFixed(2) + " in"}</li>`)
       .join(""));
 
+    const ago = (hours) => {
+      const days = Math.floor(hours / 24);
+      return hours < 1 ? "less than an hour ago"
+        : days ? `${days} day${days === 1 ? "" : "s"} ago`
+        : `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    };
+
     const last = data.last_precipitation;
     let lastText = "None in the last 2 weeks";
     if (last) {
-      const days = Math.floor(last.hours_ago / 24);
-      const hours = last.hours_ago;
-      const ago = hours < 1 ? "Less than an hour ago"
-        : days ? `${days} day${days === 1 ? "" : "s"} ago`
-        : `${hours} hour${hours === 1 ? "" : "s"} ago`;
-      lastText = `${ago} (${formatMountain(last.date_time)})`;
+      const text = ago(last.hours_ago);
+      lastText = `${text[0].toUpperCase()}${text.slice(1)} (${formatMountain(last.date_time)})`;
     }
-    // Safety guideline: precipitation < 24h ago is red, < 48h orange, < 72h yellow, anything older is green.
-    const h = last ? last.hours_ago : Infinity;
-    const level = h < 24 ? "red" : h < 48 ? "orange" : h < 72 ? "yellow" : "green";
-    const safetyText = {
-      red: "Likely not safe to climb.\nPrecipitation was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-      orange: "Likely unsafe to climb.\nPrecipitation was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-      yellow: "Potentially unsafe to climb.\nPrecipitation was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-      green: "Likely safe to climb.\nNo precipitation has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
+
+    // Drying time from the rolling last 24 hours of precipitation (see DRYING_HOURS).
+    const day = data.recent.find((r) => r.hours === 24);
+    const precip = day?.precip_in ?? 0;
+    const snow = day?.snow_in ?? 0;
+    const dryHours = DRYING_HOURS.find((r) => precip < r.underInches).hours
+      + (precip > 0 && snow >= precip / 2 ? SNOW_EXTRA_HOURS : 0);
+    // The rock is likely dry once the drying time has passed since the last precipitation.
+    const sinceLast = last ? last.hours_ago : Infinity;
+    const hoursLeft = dryHours - sinceLast;
+    // Red for the first half of the drying time, yellow for the second, then green.
+    const level = hoursLeft <= 0 ? "green" : sinceLast < dryHours / 2 ? "red" : "yellow";
+    const verdictText = {
+      red: "Likely not safe to climb.",
+      yellow: "Potentially unsafe to climb.",
+      green: "Likely safe to climb.",
     }[level];
+    let detail = `In the last 24 hours, there has been ${(precip - snow).toFixed(2)} in of rain and ${snow.toFixed(2)} in of snow.`;
+    if (hoursLeft > 0) {
+      detail += `\nThe next time it's likely safe to climb is ${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} from now.`;
+    }
+    const safetyText = `${verdictText}\n${detail}\nUse caution and check the rock and conditions yourself before climbing.`;
 
     const lastEl = document.getElementById("last-precipitation");
     lastEl.textContent = lastText;

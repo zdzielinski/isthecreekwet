@@ -93,6 +93,13 @@ fetch("/api/forecast")
       tr.replaceChildren(day, ...cells);
       return tr;
     }));
+    // Responses cached before "updated" existed lack it, so leave the issue time out.
+    if (data.updated) {
+      const issued = new Date(data.updated).toLocaleString("en-US", {
+        timeZone: "America/Denver", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      });
+      document.getElementById("forecast-issued").textContent = `NOAA Forecast issued on ${issued} MT.`;
+    }
   })
   .catch((err) => {
     document.getElementById("forecast-rows").innerHTML = `<tr><td colspan="5">Couldn't load the forecast (${err.message}).</td></tr>`;

@@ -39,7 +39,7 @@ cat .dev.vars.example > .dev.vars
 Start developing:
 
 ```bash
-npx wrangler dev
+npx wrangler dev --live-reload
 ```
 
 ## Previews

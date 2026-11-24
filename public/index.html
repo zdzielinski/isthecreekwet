@@ -19,7 +19,12 @@
   <div class="scroll-x">
     <div class="chart-box"><canvas id="chart"></canvas></div>
   </div>
-  <p class="chart-note">Snow is assumed for any hour with an average air temperature of 34°F or below.</p>
+  <p class="chart-note">
+    Summarized from Utah Climate Center data, hourly station readings are totaled into one bar per
+    day (Mountain Time), and snow is assumed for any hour with an average air temperature of 34°F or
+    below. This is not official Utah Climate Center data. Use this summarization at your own
+    discretion and risk.
+  </p>
 
   <h2>NOAA Forecast</h2>
   <div class="scroll-x">
@@ -30,8 +35,13 @@
     <tbody id="forecast-rows"><tr><td colspan="5">Loading…</td></tr></tbody>
   </table>
   </div>
+  <p class="chart-note">
+    <span id="forecast-issued"></span>
+    Summarized from National Weather Service data, day and night periods are combined into one row
+    per day, and precipitation amounts are converted to inches. This is not an official NWS forecast. Use this summarization at your own discretion and risk.
+  </p>
 
-  <h2>Sunny Crag Options</h2>
+  <h2>Sunny Crags</h2>
   <div class="scroll-x">
   <table id="sunny">
     <thead>
@@ -63,10 +73,11 @@
     </p>
     <p>
       <strong>How data is retrieved:</strong> The station reports once an hour. To keep load on the
-      Utah Climate Center low, we fetch its data at most once an hour and serve that saved copy to
-      every visitor until it expires. Loading this page doesn't contact the Utah Climate Center
-      directly, and the numbers shown can be up to about an hour behind the station. The forecast is
-      saved and refreshed the same way, at most once an hour.
+      Utah Climate Center low, we save a copy of its data for an hour and show that copy to visitors,
+      instead of contacting the Utah Climate Center for each visit. Copies are saved separately in
+      each Cloudflare data center, so the data is fetched about once an hour from each data center
+      that serves visitors. The numbers shown can be up to about an hour behind the station. The
+      forecast is saved and refreshed the same way.
     </p>
     <p>
       <strong>Visiting Indian Creek:</strong> The BLM asks climbers to wait at least 24–48 hours after precipitation
@@ -87,8 +98,19 @@
       <strong>Hosting:</strong> This site runs on <a href="https://workers.cloudflare.com/">Cloudflare Workers</a>.
       The backend is Rust, compiled to WebAssembly and running in WebAssembly in Cloudflare data centers around the world, so
       there's no server to maintain. Station and forecast data are stored in Cloudflare's edge cache,
-      which is how the site checks the Utah Climate Center at most once an hour no matter how many
-      people visit.
+      so visitors don't each trigger a new request to the Utah Climate Center or the National
+      Weather Service.
+    </p>
+    <p>
+      <strong>No warranty:</strong> Data on this site is provided as is, with no guarantee that it's
+      accurate, complete, or up to date. It may be incomplete or delayed, for example when the station
+      misses a reading or a data source is unavailable. The station is at Dugout Ranch and may not
+      match conditions at every crag. Climbing is dangerous and is at your own risk: always check the
+      rock and conditions yourself before you climb.
+    </p>
+    <p>
+      <strong>License:</strong> This site's source code is released under the
+      <a href="https://github.com/zdzielinski/isthecreekwet/blob/main/LICENSE.md">MIT License</a>.
     </p>
     <p>
       <strong>Support this site:</strong> Running this site and keeping the data fresh costs money.

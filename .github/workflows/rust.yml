@@ -1,0 +1,53 @@
+# The checks from CLAUDE.md: formatting, clippy (for the wasm32 build that Cloudflare runs), tests,
+# docs and a dependency audit.
+name: Rust
+
+on:
+  pull_request:
+    branches: [main, staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Installs the toolchain, components and wasm32 target pinned in rust-toolchain.toml.
+      - name: Install toolchain
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Cargo Format
+        run: cargo fmt --check
+
+      - name: Cargo Clippy
+        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Cargo Test
+        run: cargo test
+
+      - name: Cargo Docs
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      # A prebuilt binary, so cargo-audit isn't compiled on every run.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Fails on known vulnerabilities in Cargo.lock. Advisories that are only warnings, like
+      # chrono being unmaintained (it comes in through `worker`), are reported but don't fail.
+      - name: Audit dependencies
+        run: cargo audit

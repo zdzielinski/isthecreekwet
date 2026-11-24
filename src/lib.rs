@@ -102,11 +102,12 @@ async fn nws_json(url: &str, debug: &DebugLog) -> Result<Value> {
     resp.json().await
 }
 
-/// The NWS 7-day forecast for the station, one entry per day.
+/// The NWS 7-day forecast for the station, one entry per day, and when NWS issued it.
 ///
-/// Returns [{"name", "date", "high", "low", "precip_pct", "precip_in", "short"}]; name is the
-/// weekday. high, low or precip_in is null when the forecast doesn't cover that part of the day.
-async fn get_forecast(debug: &DebugLog) -> Result<Vec<Value>> {
+/// Returns {"updated": ISO time or null, "days": [{"name", "date", "high", "low", "precip_pct",
+/// "precip_in", "short"}]}; name is the weekday. high, low or precip_in is null when the forecast
+/// doesn't cover that part of the day.
+async fn get_forecast(debug: &DebugLog) -> Result<Value> {
     let forecast = nws_json(FORECAST_URL, debug).await?;
     let grid = nws_json(GRIDPOINT_URL, debug).await?;
     let periods = forecast["properties"]["periods"].as_array().cloned().unwrap_or_default();
@@ -160,7 +161,10 @@ async fn get_forecast(debug: &DebugLog) -> Result<Vec<Value>> {
             day["low"] = p["temperature"].clone();
         }
     }
-    Ok(days.into_iter().map(|(_, d)| d).collect())
+    Ok(json!({
+        "updated": forecast["properties"]["updateTime"],
+        "days": days.into_iter().map(|(_, d)| d).collect::<Vec<_>>(),
+    }))
 }
 
 fn parse_iso(s: &str) -> Result<DateTime<FixedOffset>> {
@@ -296,7 +300,7 @@ async fn get_precipitation(env: &Env, debug: &DebugLog) -> Result<Value> {
             "hours": h,
             "precip_in": p,
         })).collect::<Vec<_>>(),
-        "last_rain": last_precipitation(&rows, &days)?,
+        "last_precipitation": last_precipitation(&rows, &days)?,
     }))
 }
 
@@ -427,7 +431,7 @@ async fn route(req: Request, env: Env, debug: &DebugLog) -> Result<Response> {
     let use_cache = !env.var("DISABLE_CACHE").is_ok_and(|v| v.to_string() == "true");
     match req.path().as_str() {
         "/api/precipitation" => return cached(key.as_str(), use_cache, debug, get_precipitation(&env, debug)).await,
-        "/api/forecast" => return cached(key.as_str(), use_cache, debug, async { Ok(json!({"days": get_forecast(debug).await?})) }).await,
+        "/api/forecast" => return cached(key.as_str(), use_cache, debug, get_forecast(debug)).await,
         _ => {}
     }
 

@@ -1,5 +1,5 @@
 # The checks from CLAUDE.md: formatting, clippy (for the wasm32 build that Cloudflare runs), tests,
-# docs and a dependency audit.
+# docs and a dependency audit. Each runs as its own job, in parallel.
 name: Rust Checks
 
 on:
@@ -18,7 +18,25 @@ env:
 
 jobs:
   rust-checks:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # report every check, even when another fails
+      matrix:
+        include:
+          - name: Cargo Format
+            run: cargo fmt --check
+          - name: Cargo Clippy
+            run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+          - name: Cargo Test
+            run: cargo test
+          - name: Cargo Docs
+            run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+          # Fails on known vulnerabilities in Cargo.lock. Advisories that are only warnings, like
+          # chrono being unmaintained (it comes in through `worker`), are reported but don't fail.
+          - name: Cargo Audit
+            run: cargo audit
+            tool: cargo-audit
     steps:
       - uses: actions/checkout@v5
 
@@ -26,28 +44,16 @@ jobs:
       - name: Install toolchain
         run: rustup toolchain install
 
+      # One build cache per check, since each compiles differently.
       - uses: Swatinem/rust-cache@v2
-
-      - name: Cargo Format
-        run: cargo fmt --check
-
-      - name: Cargo Clippy
-        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
-
-      - name: Cargo Test
-        run: cargo test
-
-      - name: Cargo Docs
-        run: cargo doc --no-deps
-        env:
-          RUSTDOCFLAGS: -D warnings
-
-      # A prebuilt binary, so cargo-audit isn't compiled on every run.
-      - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-audit
+          key: ${{ matrix.name }}
 
-      # Fails on known vulnerabilities in Cargo.lock. Advisories that are only warnings, like
-      # chrono being unmaintained (it comes in through `worker`), are reported but don't fail.
-      - name: Audit dependencies
-        run: cargo audit
+      # A prebuilt binary for checks that need an extra tool, so it isn't compiled on every run.
+      - if: matrix.tool
+        uses: taiki-e/install-action@v2
+        with:
+          tool: ${{ matrix.tool }}
+
+      - name: ${{ matrix.name }}
+        run: ${{ matrix.run }}

@@ -33,7 +33,7 @@ persist = true
 enabled = true
 
 [vars]
-CACHE_VERSION = "3"
+CACHE_VERSION = "4"
 
 [previews.vars]
 LOG_LEVEL = "debug"
@@ -53,6 +53,3 @@ persist = true
 enabled = true
 head_sampling_rate = 1
 persist = true
-
-[previews.observability.issues]
-enabled = true

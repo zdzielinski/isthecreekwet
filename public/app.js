@@ -1,11 +1,11 @@
-// Hours the rock likely needs to dry, by precipitation in the rolling last 24 hours (inches).
+// Hours the rock likely needs to dry, by precipitation in a rolling window (inches).
 // The first row whose limit the amount is under applies.
 const DRYING_HOURS = [
   { underInches: 0.25, hours: 24 },
   { underInches: 1, hours: 48 },
   { underInches: Infinity, hours: 72 },
 ];
-// Melting snow keeps wetting the rock, so add this when at least half of those 24 hours' precipitation was snow.
+// Melting snow keeps wetting the rock, so add this when at least half of a window's precipitation was snow.
 const SNOW_EXTRA_HOURS = 24;
 
 // The API's "YYYY-MM-DD HH:MM:SS" is already Utah (Mountain) local time, so format
@@ -64,12 +64,20 @@ fetch("/api/precipitation")
       lastText = `${text[0].toUpperCase()}${text.slice(1)} (${formatMountain(last.date_time)})`;
     }
 
-    // Drying time from the rolling last 24 hours of precipitation (see DRYING_HOURS).
-    const day = data.recent.find((r) => r.hours === 24);
-    const precip = day?.precip_in ?? 0;
-    const snow = day?.snow_in ?? 0;
-    const dryHours = DRYING_HOURS.find((r) => precip < r.underInches).hours
-      + (precip > 0 && snow >= precip / 2 ? SNOW_EXTRA_HOURS : 0);
+    // Drying time for each rolling window (24, 48, 72 hours; see DRYING_HOURS). A window only counts
+    // while its drying time is at least its length, i.e. its precipitation may not have dried yet.
+    // The longest such drying time wins; on a tie, the longer window (it holds all the relevant precip).
+    const windows = data.recent.map((r) => {
+      const precip = r.precip_in ?? 0;
+      const snow = r.snow_in ?? 0;
+      const dryHours = DRYING_HOURS.find((d) => precip < d.underInches).hours
+        + (precip > 0 && snow >= precip / 2 ? SNOW_EXTRA_HOURS : 0);
+      return { hours: r.hours, precip, snow, dryHours };
+    });
+    const day = windows.find((w) => w.hours === 24);
+    // The 24-hour window always qualifies, since the shortest drying time is 24 hours.
+    const waiting = windows.reduce((best, w) => (w.dryHours >= w.hours && w.dryHours >= best.dryHours ? w : best), day);
+    const { dryHours } = waiting;
     // The rock is likely dry once the drying time has passed since the last precipitation.
     const sinceLast = last ? last.hours_ago : Infinity;
     const hoursLeft = dryHours - sinceLast;
@@ -80,7 +88,9 @@ fetch("/api/precipitation")
       yellow: "Potentially unsafe to climb.",
       green: "Likely safe to climb.",
     }[level];
-    let detail = `In the last 24 hours, there has been ${(precip - snow).toFixed(2)} in of rain and ${snow.toFixed(2)} in of snow.`;
+    // Report the waiting window while it lasts; once it has passed, report the last 24 hours.
+    const shown = hoursLeft > 0 ? waiting : day;
+    let detail = `In the last ${shown.hours} hours, there has been ${(shown.precip - shown.snow).toFixed(2)} in of rain and ${shown.snow.toFixed(2)} in of snow.`;
     if (hoursLeft > 0) {
       detail += `\nThe next time it's likely safe to climb is ${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} from now.`;
     }

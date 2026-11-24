@@ -24,6 +24,7 @@
     day (Mountain Time), and snow is assumed for any hour with an average air temperature of 34°F or
     below. This is not official Utah Climate Center data. Use this summarization at your own
     discretion and risk.
+    <a href="https://climate.usu.edu/mchd/dashboard/dashboard.php?network=AGWX&amp;station=1349823&amp;units=E&amp;showgraph=0">View the official station data</a>.
   </p>
 
   <h2>NOAA Forecast</h2>
@@ -39,6 +40,7 @@
     <span id="forecast-issued"></span>
     Summarized from National Weather Service data, day and night periods are combined into one row
     per day, and precipitation amounts are converted to inches. This is not an official NWS forecast. Use this summarization at your own discretion and risk.
+    <a href="https://forecast.weather.gov/MapClick.php?lat=38.104&amp;lon=-109.595">View the official NWS forecast</a>.
   </p>
 
   <h2>Sunny Crags</h2>
@@ -66,20 +68,6 @@
 
   <footer>
     <p>
-      <strong>Data source:</strong> Hourly precipitation data from the Dugout Ranch weather station,
-      provided by the <a href="https://climate.usu.edu/mchd/dashboard/dashboard.php?network=AGWX&station=1349823&units=E&showgraph=0&">Utah Climate Center</a> at Utah State University.
-      Forecast from the <a href="https://forecast.weather.gov/MapClick.php?lat=38.104&lon=-109.595">National Weather Service</a> (NOAA).
-      Times are Mountain Time.
-    </p>
-    <p>
-      <strong>How data is retrieved:</strong> The station reports once an hour. To keep load on the
-      Utah Climate Center low, we save a copy of its data for an hour and show that copy to visitors,
-      instead of contacting the Utah Climate Center for each visit. Copies are saved separately in
-      each Cloudflare data center, so the data is fetched about once an hour from each data center
-      that serves visitors. The numbers shown can be up to about an hour behind the station. The
-      forecast is saved and refreshed the same way.
-    </p>
-    <p>
       <strong>Visiting Indian Creek:</strong> The BLM asks climbers to wait at least 24–48 hours after precipitation
       before climbing on sandstone, because wet rock erodes faster and can weaken anchors and holds.
       Some crags are voluntary avoidance areas for nesting raptors from March through late summer.
@@ -91,15 +79,11 @@
     <p>
       <strong>Support climbing access:</strong> Donate to the
       <a href="https://www.accessfund.org/join">Access Fund</a>, which protects climbing access across the
-      U.S., or the <a href="https://www.southernutahclimbers.org/">Southern Utah Climbers Alliance</a>,
-      which works with land managers on access, trails, and replacing aging bolts and anchors.
-    </p>
-    <p>
-      <strong>Hosting:</strong> This site runs on <a href="https://workers.cloudflare.com/">Cloudflare Workers</a>.
-      The backend is Rust, compiled to WebAssembly and running in WebAssembly in Cloudflare data centers around the world, so
-      there's no server to maintain. Station and forecast data are stored in Cloudflare's edge cache,
-      so visitors don't each trigger a new request to the Utah Climate Center or the National
-      Weather Service.
+      U.S., the <a href="https://www.southernutahclimbers.org/">Southern Utah Climbers Alliance</a>,
+      which works with land managers on access, trails, and replacing aging bolts and anchors, and the
+      <a href="https://www.boulderclimbers.org/donate">Boulder Climbing Community</a>, which engages
+      climbers to protect and preserve climbing areas. Running this site and keeping the data fresh costs money. If it's helped you plan a trip,
+      <a href="https://www.paypal.com/donate/?business=W4J6W4EFB57EY&amp;no_recurring=0&amp;currency_code=USD">small donations are greatly appreciated</a>.
     </p>
     <p>
       <strong>No warranty:</strong> Data on this site is provided as is, with no guarantee that it's
@@ -107,14 +91,6 @@
       misses a reading or a data source is unavailable. The station is at Dugout Ranch and may not
       match conditions at every crag. Climbing is dangerous and is at your own risk: always check the
       rock and conditions yourself before you climb.
-    </p>
-    <p>
-      <strong>License:</strong> This site's source code is released under the
-      <a href="https://github.com/zdzielinski/isthecreekwet/blob/main/LICENSE.md">MIT License</a>.
-    </p>
-    <p>
-      <strong>Support this site:</strong> Running this site and keeping the data fresh costs money.
-      If it's helped you plan a trip, small donations are greatly appreciated.
     </p>
     <p>
       <strong>Contact:</strong> <a href="mailto:hello@isthecreekwet.com">hello@isthecreekwet.com</a>

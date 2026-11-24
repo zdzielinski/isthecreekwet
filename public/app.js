@@ -40,7 +40,7 @@ fetch("/api/precipitation")
       .map((r) => `<li><strong>Last ${r.hours} hours:</strong> ${r.precip_in == null ? "no data" : r.precip_in.toFixed(2) + " in"}</li>`)
       .join(""));
 
-    const last = data.last_rain;
+    const last = data.last_precipitation;
     let lastText = "None in the last 2 weeks";
     if (last) {
       const days = Math.floor(last.hours_ago / 24);
@@ -50,17 +50,17 @@ fetch("/api/precipitation")
         : `${hours} hour${hours === 1 ? "" : "s"} ago`;
       lastText = `${ago} (${formatMountain(last.date_time)})`;
     }
-    // Safety guideline: rain < 24h ago is red, < 48h orange, < 72h yellow, anything older is green.
+    // Safety guideline: precipitation < 24h ago is red, < 48h orange, < 72h yellow, anything older is green.
     const h = last ? last.hours_ago : Infinity;
     const level = h < 24 ? "red" : h < 48 ? "orange" : h < 72 ? "yellow" : "green";
     const safetyText = {
       red: "Likely not safe to climb.\nPrecipitation was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
       orange: "Likely unsafe to climb.\nPrecipitation was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
       yellow: "Potentially unsafe to climb.\nPrecipitation was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-      green: "Likely safe to climb.\nNo rain has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
+      green: "Likely safe to climb.\nNo precipitation has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
     }[level];
 
-    const lastEl = document.getElementById("last-rain");
+    const lastEl = document.getElementById("last-precipitation");
     lastEl.textContent = lastText;
 
     const safetyEl = document.getElementById("safety");
@@ -72,7 +72,7 @@ fetch("/api/precipitation")
     safetyEl.className = `status ${level}`;
   })
   .catch((err) => {
-    document.getElementById("safety").textContent = `Unknown: rainfall data couldn't be loaded (${err.message}).`;
+    document.getElementById("safety").textContent = `Unknown: Precipitation data couldn't be loaded (${err.message}).`;
   });
 
 fetch("/api/forecast")

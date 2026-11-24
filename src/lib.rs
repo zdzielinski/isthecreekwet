@@ -296,7 +296,7 @@ async fn get_precipitation(env: &Env, debug: &DebugLog) -> Result<Value> {
             "hours": h,
             "precip_in": p,
         })).collect::<Vec<_>>(),
-        "last_rain": last_precipitation(&rows, &days)?,
+        "last_precipitation": last_precipitation(&rows, &days)?,
     }))
 }
 

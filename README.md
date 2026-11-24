@@ -1,54 +1,27 @@
-# isthecreekwet.com
+# isthecreekwet
 
-## Setup
+**[isthecreekwet.com](https://isthecreekwet.com)** helps climbers decide whether the sandstone at Indian Creek, Utah, is dry enough to climb.
 
-Install Node:
+Wet sandstone is weak. Climbing on it too soon after rain or snow can break holds and loosen anchors, so the BLM asks climbers to wait at least 24–48 hours after precipitation. This site puts the information you need to make that call on one page:
 
-```bash
-brew install node
-```
+- **Recent precipitation:** when it last rained or snowed, and an hourly chart of the last 14 days from the Dugout Ranch weather station.
+- **Forecast:** the National Weather Service forecast for the area, including expected precipitation.
+- **Sunny crags:** crags that get the most sun, for drying out on cold or damp days.
 
-Install Rust:
+## Data sources
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-```
+- Hourly station data from the [Utah Climate Center](https://climate.usu.edu/) at Utah State University.
+- Forecast from the [National Weather Service](https://www.weather.gov/) (NOAA).
 
-Update your rc file to include this:
+Both are fetched at most once an hour and cached, to keep load on the data providers low.
 
-```bash
-export PATH="$HOME/.cargo/bin:$PATH"
-```
+## How it's built
 
-Then:
+The site runs on [Cloudflare Workers](https://workers.cloudflare.com/). The backend is Rust compiled to WebAssembly ([src/lib.rs](src/lib.rs)), and the frontend is plain HTML, CSS and JavaScript ([public/](public/)).
 
-```bash
-rustup target add wasm32-unknown-unknown
-npx wrangler secret put USU_API_KEY
-```
+## Contributing
 
-## Local dev
-
-Edit your secrets and other local variables:
-
-```bash
-cat .dev.vars.example > .dev.vars
-```
-
-Start developing:
-
-```bash
-npx wrangler dev
-```
-
-## Previews
-
-Create a preview for a new branch:
-
-```bash
-npx wrangler preview
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and local development.
 
 ## License
 

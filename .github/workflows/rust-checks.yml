@@ -4,7 +4,7 @@ name: Rust Checks
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main]
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  checks:
+  rust:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     strategy:
@@ -62,8 +62,8 @@ jobs:
   # checks can be added or renamed without changing the rules.
   rust-checks:
     if: always()
-    needs: checks
+    needs: rust
     runs-on: ubuntu-latest
     steps:
       - name: All Rust checks passed
-        run: test "${{ needs.checks.result }}" = success
+        run: test "${{ needs.rust.result }}" = success

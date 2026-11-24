@@ -182,3 +182,7 @@ while let Some(result) = set.join_next().await {
 - Prefer generics when: performance matters, trait bounds are simple, single-crate use
 - Prefer trait objects (`Box<dyn Trait>`) when: return types need erasure, heterogeneous collections, cross-crate boundaries
 - Ask before converting between the two — it affects the public API surface
+
+# Custom Rules
+
+- Ensure that we increase the wrangler.toml CACHE_VERSION variable when we are working on a new branch.

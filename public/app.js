@@ -14,7 +14,7 @@ function logDebug(r) {
   return r;
 }
 
-fetch("/api/rainfall")
+fetch("/api/precipitation")
   .then(logDebug)
   .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
   .then((data) => {
@@ -25,9 +25,15 @@ fetch("/api/rainfall")
       data: {
         // Array labels render on two lines: weekday above, M/D below.
         labels: data.days.map((d) => [d.weekday, d.date.slice(5).split("-").map(Number).join("/")]),
-        datasets: [{ label: "Rainfall (in)", data: data.days.map((d) => d.precip_in) }],
+        // Each day's bar stacks rain under snow (precip in hours averaging 34°F or colder; see src/lib.rs).
+        // Responses cached before snow_in existed lack it, so treat it as 0 rather than blanking the chart.
+        datasets: [
+          // Chart.js's former auto color; setting any dataset's color turns its auto colors off.
+          { label: "Rain (in)", data: data.days.map((d) => +(d.precip_in - (d.snow_in ?? 0)).toFixed(2)), backgroundColor: "rgba(54, 162, 235, 0.5)", borderColor: "rgb(54, 162, 235)" },
+          { label: "Snow (in)", data: data.days.map((d) => d.snow_in), backgroundColor: "#f3faff" },
+        ],
       },
-      options: { scales: { y: { beginAtZero: true } } },
+      options: { scales: { x: { stacked: true }, y: { beginAtZero: true, stacked: true } } },
     });
 
     document.getElementById("recent").insertAdjacentHTML("beforeend", data.recent
@@ -48,9 +54,9 @@ fetch("/api/rainfall")
     const h = last ? last.hours_ago : Infinity;
     const level = h < 24 ? "red" : h < 48 ? "orange" : h < 72 ? "yellow" : "green";
     const safetyText = {
-      red: "Likely not safe to climb.\nRain was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-      orange: "Likely unsafe to climb.\nRain was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
-      yellow: "Potentially unsafe to climb.\nRain was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+      red: "Likely not safe to climb.\nPrecipitation was detected less than 24 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+      orange: "Likely unsafe to climb.\nPrecipitation was detected less than 48 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
+      yellow: "Potentially unsafe to climb.\nPrecipitation was detected less than 72 hours ago.\nUse caution and check the rock and conditions yourself before climbing.",
       green: "Likely safe to climb.\nNo rain has been detected in the last 72 hours.\nUse caution and check the rock and conditions yourself before climbing.",
     }[level];
 

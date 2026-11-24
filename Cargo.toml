@@ -2,6 +2,7 @@
 name = "isthecreekwet"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.91"
 
 [lib]
 crate-type = ["cdylib"]
@@ -11,9 +12,17 @@ worker = { version = "0.9" }
 worker-macros = { version = "0.9" }
 url = "2"
 serde = { version = "1", features = ["derive"] }
+thiserror = "2"
 serde_json = { version = "1", features = ["preserve_order"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std", "wasmbind"] }
+time = { version = "0.3", features = ["formatting", "macros", "parsing", "wasm-bindgen"] }
 
 [profile.release]
 lto = true
 codegen-units = 1
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Workers run each request on a single thread, and the `worker` crate's types (Request, Fetch,
+# Cache, ...) aren't Send, so no future here can be Send either.
+future_not_send = "allow"
